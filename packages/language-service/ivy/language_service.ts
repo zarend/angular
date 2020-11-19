@@ -7,7 +7,7 @@
  */
 
 import {CompilerOptions, ConfigurationHost, readConfiguration} from '@angular/compiler-cli';
-import {absoluteFromSourceFile, AbsoluteFsPath} from '@angular/compiler-cli/src/ngtsc/file_system';
+import {absoluteFrom, absoluteFromSourceFile, AbsoluteFsPath} from '@angular/compiler-cli/src/ngtsc/file_system';
 import {TypeCheckShimGenerator} from '@angular/compiler-cli/src/ngtsc/typecheck';
 import {OptimizeFor, TypeCheckingProgramStrategy} from '@angular/compiler-cli/src/ngtsc/typecheck/api';
 import {ReferenceBuilder} from '@angular/language-service/ivy/references';
@@ -101,6 +101,8 @@ export class LanguageService {
     const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
     const results =
         new ReferenceBuilder(this.strategy, this.tsLS, compiler).get(fileName, position);
+    const results = new ReferenceBuilder(this.strategy, this.tsLS, compiler)
+                        .get(absoluteFrom(fileName), position);
     this.compilerFactory.registerLastKnownProgram();
     return results;
   }
