@@ -288,6 +288,74 @@ runInEachFileSystem(() => {
       ]);
     });
 
+    it('it should recover from an error in an ngModule caused by an external template', () => {
+      // In this test, there are two components, TestCmp and TargetCmp, that are part of the same
+      // NgModule. The external template of TestCmp is broken in an incremental build and then fixed,
+      // the test verifies that TargetCmp is re-emitted.
+      env.write('test.ts', `
+        import {Component} from '@angular/core';
+
+        @Component({selector: 'test-cmp', templateUrl: './test.html'})
+        export class TestCmp {
+          message = 'hello';
+        }
+      `);
+      env.write('test.html', `
+        {{ message }}
+      `);
+      env.write('target.ts', `
+        import {Component} from '@angular/core';
+
+        @Component({selector: 'target-cmp', template: '<test-cmp></test-cmp>'})
+        export class TargetCmp {}
+      `);
+      env.write('module.ts', `
+        import {NgModule} from '@angular/core';
+        import {TargetCmp} from './target';
+        import {TestCmp} from './test';
+
+        @NgModule({
+          declarations: [TestCmp, TargetCmp],
+        })
+        export class Module {}
+      `);
+
+      // Start with a clean compilation.
+      env.driveMain();
+      env.flushWrittenFileTracking();
+
+      // Introduce the angular parse error in the external template.
+      env.write('test.html', `
+        {{ message = 'howdy' }}
+      `);
+      const diags = env.driveDiagnostics();
+      expect(diags.length).toBeGreaterThan(0);
+      expectToHaveWritten([]);
+
+      // Clear the error and trigger the rebuild.
+      env.write('test.html', `
+        {{ message }}
+      `);
+
+      env.driveMain();
+
+      expectToHaveWritten([
+        // The file which had the error should have been emitted, of course.
+        '/test.js',
+
+        // Because TestCmp belongs to a module, the module's file should also have been
+        // re-emitted.
+        '/module.js',
+
+        // Because TargetCmp also belongs to the same module, it should be re-emitted since
+        // TestCmp's elector may have changed.
+        '/target.js',
+      ]);
+
+      const diags2 = env.driveDiagnostics();
+      expect(diags2.length).toEqual(1);
+    });
+
     it('should recover from an error even across multiple NgModules', () => {
       // This test is a variation on the above. Two components (CmpA and CmpB) exist in an NgModule,
       // which indirectly imports a LibModule (via another NgModule in the middle). The test is
