@@ -351,9 +351,6 @@ runInEachFileSystem(() => {
         // TestCmp's elector may have changed.
         '/target.js',
       ]);
-
-      const diags2 = env.driveDiagnostics();
-      expect(diags2.length).toEqual(1);
     });
 
     it('should recover from an error even across multiple NgModules', () => {
