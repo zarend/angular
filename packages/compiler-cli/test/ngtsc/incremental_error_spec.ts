@@ -290,8 +290,8 @@ runInEachFileSystem(() => {
 
     it('it should recover from an error in an ngModule caused by an external template', () => {
       // In this test, there are two components, TestCmp and TargetCmp, that are part of the same
-      // NgModule. The external template of TestCmp is broken in an incremental build and then fixed,
-      // the test verifies that TargetCmp is re-emitted.
+      // NgModule. The external template of TestCmp is broken in an incremental build and then
+      // fixed, the test verifies that TargetCmp is re-emitted.
       env.write('test.ts', `
         import {Component} from '@angular/core';
 
