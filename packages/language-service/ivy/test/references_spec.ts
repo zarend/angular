@@ -8,90 +8,122 @@
 
 import {absoluteFrom, absoluteFrom as _} from '@angular/compiler-cli/src/ngtsc/file_system';
 import {initMockFileSystem, TestFile} from '@angular/compiler-cli/src/ngtsc/file_system/testing';
-import * as ts from 'typescript/lib/tsserverlibrary';
 
 import {extractCursorInfo, LanguageServiceTestEnvironment} from './env';
-import {getText} from './test_utils';
+import {humanizeDocumentSpanLike} from './test_utils';
 
-describe('find references', () => {
+describe('find references and rename locations', () => {
   let env: LanguageServiceTestEnvironment;
 
   beforeEach(() => {
     initMockFileSystem('Native');
   });
 
-  it('gets component member references from TS file', () => {
-    const {text, cursor} = extractCursorInfo(`
+  describe('cursor is on binding in component class', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({templateUrl: './app.html'})
           export class AppCmp {
             myP¦rop!: string;
           }`);
-    const appFile = {name: _('/app.ts'), contents: text};
-    const templateFile = {name: _('/app.html'), contents: '{{myProp}}'};
-    createModuleWithDeclarations([appFile], [templateFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    expect(refs.length).toBe(2);
-    assertFileNames(refs, ['app.html', 'app.ts']);
-    assertTextSpans(refs, ['myProp']);
-  });
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+      const templateFile = {name: _('/app.html'), contents: '{{myProp}}'};
+      createModuleWithDeclarations([appFile], [templateFile]);
+    })
 
-  it('gets component member references from TS file and inline template', () => {
-    const {text, cursor} = extractCursorInfo(`
-          import {Component} from '@angular/core';
+    it('gets component member references from TS file and external template', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
+      assertFileNames(refs, ['app.html', 'app.ts']);
+      assertTextSpans(refs, ['myProp']);
+    });
 
-          @Component({template: '{{myProp}}'})
-          export class AppCmp {
-            myP¦rop!: string;
-          }`);
-    const appFile = {name: _('/app.ts'), contents: text};
-    createModuleWithDeclarations([appFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    expect(refs.length).toBe(2);
-    assertFileNames(refs, ['app.ts']);
-    assertTextSpans(refs, ['myProp']);
-  });
+    it('gets rename locations from TS file and external template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+      assertFileNames(renameLocations, ['app.html', 'app.ts']);
+      assertTextSpans(renameLocations, ['myProp']);
+    });
+  })
 
-  it('gets component member references from template', () => {
-    const appFile = {
-      name: _('/app.ts'),
-      contents: `
+  describe('when cursor is on binding in an external template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const appFile = {
+        name: _('/app.ts'),
+        contents: `
           import {Component} from '@angular/core';
 
           @Component({templateUrl: './app.html'})
           export class AppCmp {
             myProp = '';
           }`,
-    };
-    const {text, cursor} = extractCursorInfo('{{myP¦rop}}');
-    const templateFile = {name: _('/app.html'), contents: text};
-    createModuleWithDeclarations([appFile], [templateFile]);
-    const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-    expect(refs.length).toBe(2);
-    assertFileNames(refs, ['app.html', 'app.ts']);
-    assertTextSpans(refs, ['myProp']);
-  });
+      };
+      const cursorInfo = extractCursorInfo('{{myP¦rop}}');
+      cursor = cursorInfo.cursor;
+      const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile], [templateFile]);
+    })
 
-  it('should work for method calls', () => {
-    const {text, cursor} = extractCursorInfo(`
+    it('gets component member references from template', () => {
+      const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+      expect(refs.length).toBe(2);
+      assertFileNames(refs, ['app.html', 'app.ts']);
+      assertTextSpans(refs, ['myProp']);
+    });
+
+    it('gets component rename locations from template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+      assertFileNames(renameLocations, ['app.html', 'app.ts']);
+      assertTextSpans(renameLocations, ['myProp']);
+    });
+  })
+
+  describe('when cursor is on function call in external template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<div (click)="set¦Title(2)"></div>'})
           export class AppCmp {
             setTitle(s: number) {}
           }`);
-    const appFile = {name: _('/app.ts'), contents: text};
-    createModuleWithDeclarations([appFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    expect(refs.length).toBe(2);
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile]);
+    })
 
-    assertFileNames(refs, ['app.ts']);
-    assertTextSpans(refs, ['setTitle']);
-  });
+    it('gets component member reference in ts file', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
 
-  it('should work for method call arguments', () => {
-    const {text, cursor} = extractCursorInfo(`
+      assertFileNames(refs, ['app.ts']);
+      assertTextSpans(refs, ['setTitle']);
+    });
+
+    it('gets rename location in ts file', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+
+      assertFileNames(renameLocations, ['app.ts']);
+      assertTextSpans(renameLocations, ['setTitle']);
+    });
+  })
+
+  describe('when cursor in on argument to a function call in an external template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<div (click)="setTitle(ti¦tle)"></div>'})
@@ -99,38 +131,69 @@ describe('find references', () => {
             title = '';
             setTitle(s: string) {}
           }`);
-    const appFile = {name: _('/app.ts'), contents: text};
-    createModuleWithDeclarations([appFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    expect(refs.length).toBe(2);
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile]);
+    })
 
-    assertTextSpans(refs, ['title']);
-  });
+    it('gets member reference in ts file', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
 
-  it('should work for property writes', () => {
-    const appFile = {
-      name: _('/app.ts'),
-      contents: `
+      assertTextSpans(refs, ['title']);
+    });
+
+    it('finds rename location in ts file', () => {
+      const refs = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
+
+      assertTextSpans(refs, ['title']);
+    });
+  })
+
+  describe('when cursor in on LHS of property write in external template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const appFile = {
+        name: _('/app.ts'),
+        contents: `
           import {Component} from '@angular/core';
 
           @Component({templateUrl: './app.html' })
           export class AppCmp {
             title = '';
           }`,
-    };
-    const templateFileWithCursor = `<div (click)="ti¦tle = 'newtitle'"></div>`;
-    const {text, cursor} = extractCursorInfo(templateFileWithCursor);
-    const templateFile = {name: _('/app.html'), contents: text};
-    createModuleWithDeclarations([appFile], [templateFile]);
-    const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-    expect(refs.length).toBe(2);
+      };
+      const templateFileWithCursor = `<div (click)="ti¦tle = 'newtitle'"></div>`;
+      const cursorInfo = extractCursorInfo(templateFileWithCursor);
+      cursor = cursorInfo.cursor;
+      const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile], [templateFile]);
+    })
 
-    assertFileNames(refs, ['app.ts', 'app.html']);
-    assertTextSpans(refs, ['title']);
-  });
+    it('gets member reference in ts file', () => {
+      const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+      expect(refs.length).toBe(2);
 
-  it('should work for RHS of property writes', () => {
-    const {text, cursor} = extractCursorInfo(`
+      assertFileNames(refs, ['app.ts', 'app.html']);
+      assertTextSpans(refs, ['title']);
+    });
+
+    it('gets rename location in ts file', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+
+      assertFileNames(renameLocations, ['app.ts', 'app.html']);
+      assertTextSpans(renameLocations, ['title']);
+    })
+  })
+
+  describe('when cursor in on RHS of property write in external template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<div (click)="title = otherT¦itle"></div>' })
@@ -138,48 +201,85 @@ describe('find references', () => {
             title = '';
             otherTitle = '';
           }`);
-    const appFile = {
-      name: _('/app.ts'),
-      contents: text,
-    };
-    createModuleWithDeclarations([appFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    expect(refs.length).toBe(2);
+      cursor = cursorInfo.cursor;
+      const appFile = {
+        name: _('/app.ts'),
+        contents: cursorInfo.text,
+      };
+      createModuleWithDeclarations([appFile]);
+    })
 
-    assertFileNames(refs, ['app.ts']);
-    assertTextSpans(refs, ['otherTitle']);
-  });
+    it('get reference to member in ts file', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
 
-  it('should work for keyed reads', () => {
-    const {text, cursor} = extractCursorInfo(`
+      assertFileNames(refs, ['app.ts']);
+      assertTextSpans(refs, ['otherTitle']);
+    });
+
+    it('finds rename location in ts file', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+
+      assertFileNames(renameLocations, ['app.ts']);
+      assertTextSpans(renameLocations, ['otherTitle']);
+    });
+  })
+
+  describe('when cursor in on a keyed read', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '{{hero["na¦me"]}}' })
           export class AppCmp {
             hero: {name: string} = {name: 'Superman'};
           }`);
-    const appFile = {
-      name: _('/app.ts'),
-      contents: text,
-    };
-    createModuleWithDeclarations([appFile]);
-    const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-    // 3 references: the type definition, the value assignment, and the read in the template
-    expect(refs.length).toBe(3);
+      cursor = cursorInfo.cursor;
+      const appFile = {
+        name: _('/app.ts'),
+        contents: cursorInfo.text,
+      };
+      createModuleWithDeclarations([appFile]);
+    })
 
-    assertFileNames(refs, ['app.ts']);
-    // TODO(atscott): investigate if we can make the template keyed read be just the 'name' part.
-    // The TypeScript implementation specifically adjusts the span to accommodate string literals:
-    // https://sourcegraph.com/github.com/microsoft/TypeScript@d5779c75d3dd19565b60b9e2960b8aac36d4d635/-/blob/src/services/findAllReferences.ts#L508-512
-    // One possible solution would be to extend `FullTemplateMapping` to include the matched TCB
-    // node and then do the same thing that TS does: if the node is a string, adjust the span.
-    assertTextSpans(refs, ['name', '"name"']);
-  });
+    it('gets reference to member type definition and initialization in component class', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      // 3 references: the type definition, the value assignment, and the read in the template
+      expect(refs.length).toBe(3);
 
-  it('should work for keyed writes', () => {
-    const appFile = {
-      name: _('/app.ts'),
-      contents: `
+      assertFileNames(refs, ['app.ts']);
+      // TODO(atscott): investigate if we can make the template keyed read be just the 'name' part.
+      // The TypeScript implementation specifically adjusts the span to accommodate string literals:
+      // https://sourcegraph.com/github.com/microsoft/TypeScript@d5779c75d3dd19565b60b9e2960b8aac36d4d635/-/blob/src/services/findAllReferences.ts#L508-512
+      // One possible solution would be to extend `FullTemplateMapping` to include the matched TCB
+      // node and then do the same thing that TS does: if the node is a string, adjust the span.
+      assertTextSpans(refs, ['name', '"name"']);
+    });
+
+    it('gets rename locations in component class', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations).toBeUndefined();
+
+      // TODO(atscott): We should handle this case. The fix requires us to fix the result span as
+      // described above.
+      // 3 references: the type definition, the value assignment, and the read in the template
+      // expect(renameLocations.length).toBe(3);
+      //
+      // assertFileNames(renameLocations, ['app.ts']);
+      // assertTextSpans(renameLocations, ['name']);
+    });
+  })
+
+  describe('when cursor in on RHS of keyed write in a template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const appFile = {
+        name: _('/app.ts'),
+        contents: `
           import {Component} from '@angular/core';
 
           @Component({templateUrl: './app.html' })
@@ -187,40 +287,70 @@ describe('find references', () => {
             hero: {name: string} = {name: 'Superman'};
             batman = 'batman';
           }`,
-    };
-    const templateFileWithCursor = `<div (click)="hero['name'] = bat¦man"></div>`;
-    const {text, cursor} = extractCursorInfo(templateFileWithCursor);
-    const templateFile = {name: _('/app.html'), contents: text};
-    createModuleWithDeclarations([appFile], [templateFile]);
-    const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-    expect(refs.length).toBe(2);
+      };
+      const templateFileWithCursor = `<div (click)="hero['name'] = bat¦man"></div>`;
+      const cursorInfo = extractCursorInfo(templateFileWithCursor);
+      cursor = cursorInfo.cursor;
+      const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile], [templateFile]);
+    })
 
-    assertFileNames(refs, ['app.ts', 'app.html']);
-    assertTextSpans(refs, ['batman']);
-  });
+    it('get references in ts file', () => {
+      const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+      expect(refs.length).toBe(2);
 
-  describe('references', () => {
-    it('should work for element references', () => {
-      const {text, cursor} = extractCursorInfo(`
+      assertFileNames(refs, ['app.ts', 'app.html']);
+      assertTextSpans(refs, ['batman']);
+    });
+
+    it('finds rename location in ts file', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+
+      assertFileNames(renameLocations, ['app.ts', 'app.html']);
+      assertTextSpans(renameLocations, ['batman']);
+    });
+  })
+
+  describe('when cursor in on an element reference', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<input #myInput /> {{ myIn¦put.value }}'})
           export class AppCmp {
             title = '';
           }`);
-      const appFile = {name: _('/app.ts'), contents: text};
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
       createModuleWithDeclarations([appFile]);
+    })
+
+    it('get reference to declaration in template', () => {
       const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+
       expect(refs.length).toBe(2);
       assertTextSpans(refs, ['myInput']);
 
-      const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.ts'), cursor)!;
       // Get the declaration by finding the reference that appears first in the template
-      originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
-      expect(originalRefs[0].isDefinition).toBe(true);
-    });
+      refs.sort((a, b) => a.textSpan.start - b.textSpan.start);
+      expect(refs[0].isDefinition).toBe(true);
+    })
 
-    it('should work for template references', () => {
+    it('finds rename location in template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+
+      expect(renameLocations.length).toBe(2);
+      assertTextSpans(renameLocations, ['myInput']);
+    })
+  })
+
+  describe('when cursor in on a template reference', () => {
+    let cursor: number;
+
+    beforeEach(() => {
       const templateWithCursor = `
               <ng-template #myTemplate >bla</ng-template>
               <ng-container [ngTemplateOutlet]="myTem¦plate"></ng-container>`;
@@ -234,21 +364,63 @@ describe('find references', () => {
             title = '';
           }`,
       };
-      const {text, cursor} = extractCursorInfo(templateWithCursor);
-      const templateFile = {name: _('/app.html'), contents: text};
+      const cursorInfo = extractCursorInfo(templateWithCursor);
+      cursor = cursorInfo.cursor;
+      const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
       createModuleWithDeclarations([appFile], [templateFile]);
+    })
+
+    it('gets reference to declaration', () => {
       const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
       expect(refs.length).toBe(2);
       assertTextSpans(refs, ['myTemplate']);
       assertFileNames(refs, ['app.html']);
 
-      const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.html'), cursor)!;
       // Get the declaration by finding the reference that appears first in the template
-      originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
-      expect(originalRefs[0].isDefinition).toBe(true);
+      refs.sort((a, b) => a.textSpan.start - b.textSpan.start);
+      expect(refs[0].isDefinition).toBe(true);
     });
 
-    describe('directive references', () => {
+    it('finds rename location in template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+      assertTextSpans(renameLocations, ['myTemplate']);
+      assertFileNames(renameLocations, ['app.html']);
+    })
+  })
+
+  describe('when cursor is on class member that is referenced in inline template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
+          import {Component} from '@angular/core';
+          @Component({template: '{{myProp}}'})
+          export class AppCmp {
+            myP¦rop!: string;
+          }`);
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile]);
+    })
+
+    it('gets component member references from TS file and inline template', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
+      assertFileNames(refs, ['app.ts']);
+      assertTextSpans(refs, ['myProp']);
+    });
+
+    it('gets rename locations from TS file and inline template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+      assertFileNames(renameLocations, ['app.ts']);
+      assertTextSpans(renameLocations, ['myProp']);
+    });
+  })
+
+  describe('template references', () => {
+    describe('directives', () => {
       let appFile: TestFile;
       let dirFile: TestFile;
 
@@ -270,97 +442,185 @@ describe('find references', () => {
         dirFile = {name: _('/dir.ts'), contents: dirFileContents};
       });
 
-      it('should work for usage of reference in template', () => {
-        const templateWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirR¦ef }}';
-        const {text, cursor} = extractCursorInfo(templateWithCursor);
-        const templateFile = {name: _('/app.html'), contents: text};
-        createModuleWithDeclarations([appFile, dirFile], [templateFile]);
-        const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-        expect(refs.length).toBe(2);
-        assertFileNames(refs, ['app.html']);
-        assertTextSpans(refs, ['dirRef']);
+      describe('when cursor is on usage of template reference', () => {
+        let cursor: number;
+        beforeEach(() => {
+          const templateWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirR¦ef }}';
+          const cursorInfo = extractCursorInfo(templateWithCursor);
+          cursor = cursorInfo.cursor;
+          const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+          createModuleWithDeclarations([appFile, dirFile], [templateFile]);
+        });
+
+        it('should get references', () => {
+          const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+          expect(refs.length).toBe(2);
+          assertFileNames(refs, ['app.html']);
+          assertTextSpans(refs, ['dirRef']);
+        });
+
+        it('should find rename locations', () => {
+          const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+          expect(renameLocations.length).toBe(2);
+          assertFileNames(renameLocations, ['app.html']);
+          assertTextSpans(renameLocations, ['dirRef']);
+        });
       });
 
-      it('should work for prop reads of directive references', () => {
-        const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef.dirV¦alue }}';
-        const {text, cursor} = extractCursorInfo(fileWithCursor);
-        const templateFile = {name: _('/app.html'), contents: text};
-        createModuleWithDeclarations([appFile, dirFile], [templateFile]);
-        const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-        expect(refs.length).toBe(2);
-        assertFileNames(refs, ['dir.ts', 'app.html']);
-        assertTextSpans(refs, ['dirValue']);
+      describe('when cursor is on a property read of directive reference', () => {
+        let cursor: number;
+        beforeEach(() => {
+          const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef.dirV¦alue }}';
+          const cursorInfo = extractCursorInfo(fileWithCursor);
+          cursor = cursorInfo.cursor;
+          const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+          createModuleWithDeclarations([appFile, dirFile], [templateFile]);
+        });
+
+        it('should get references', () => {
+          const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+          expect(refs.length).toBe(2);
+          assertFileNames(refs, ['dir.ts', 'app.html']);
+          assertTextSpans(refs, ['dirValue']);
+        });
+
+        it('should find rename locations', () => {
+          const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+          expect(renameLocations.length).toBe(2);
+          assertFileNames(renameLocations, ['dir.ts', 'app.html']);
+          assertTextSpans(renameLocations, ['dirValue']);
+        });
       });
 
-      it('should work for safe prop reads', () => {
-        const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef?.dirV¦alue }}';
-        const {text, cursor} = extractCursorInfo(fileWithCursor);
-        const templateFile = {name: _('/app.html'), contents: text};
-        createModuleWithDeclarations([appFile, dirFile], [templateFile]);
-        const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-        expect(refs.length).toBe(2);
-        assertFileNames(refs, ['dir.ts', 'app.html']);
-        assertTextSpans(refs, ['dirValue']);
+      describe('when cursor is on a safe prop read', () => {
+        let cursor: number;
+        beforeEach(() => {
+          const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef?.dirV¦alue }}';
+          const cursorInfo = extractCursorInfo(fileWithCursor);
+          cursor = cursorInfo.cursor;
+          const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+          createModuleWithDeclarations([appFile, dirFile], [templateFile]);
+        });
+
+
+        it('should get references', () => {
+          const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+          expect(refs.length).toBe(2);
+          assertFileNames(refs, ['dir.ts', 'app.html']);
+          assertTextSpans(refs, ['dirValue']);
+        });
+
+        it('should find rename locations', () => {
+          const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+          expect(renameLocations.length).toBe(2);
+          assertFileNames(renameLocations, ['dir.ts', 'app.html']);
+          assertTextSpans(renameLocations, ['dirValue']);
+        });
       });
 
-      it('should work for safe method calls', () => {
-        const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef?.doSometh¦ing() }}';
-        const {text, cursor} = extractCursorInfo(fileWithCursor);
-        const templateFile = {name: _('/app.html'), contents: text};
-        createModuleWithDeclarations([appFile, dirFile], [templateFile]);
-        const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
-        expect(refs.length).toBe(2);
-        assertFileNames(refs, ['dir.ts', 'app.html']);
-        assertTextSpans(refs, ['doSomething']);
+      describe('when cursor is on safe method call', () => {
+        let cursor: number;
+        beforeEach(() => {
+          const fileWithCursor = '<div [dir] #dirRef="myDir"></div> {{ dirRef?.doSometh¦ing() }}';
+          const cursorInfo = extractCursorInfo(fileWithCursor);
+          cursor = cursorInfo.cursor;
+          const templateFile = {name: _('/app.html'), contents: cursorInfo.text};
+          createModuleWithDeclarations([appFile, dirFile], [templateFile]);
+        });
+
+
+        it('should get references', () => {
+          const refs = getReferencesAtPosition(_('/app.html'), cursor)!;
+          expect(refs.length).toBe(2);
+          assertFileNames(refs, ['dir.ts', 'app.html']);
+          assertTextSpans(refs, ['doSomething']);
+        });
+
+        it('should find rename locations', () => {
+          const renameLocations = getRenameLocationsAtPosition(_('/app.html'), cursor)!;
+          expect(renameLocations.length).toBe(2);
+          assertFileNames(renameLocations, ['dir.ts', 'app.html']);
+          assertTextSpans(renameLocations, ['doSomething']);
+        });
       });
     });
   });
 
-  describe('variables', () => {
-    it('should work for variable initialized implicitly', () => {
-      const {text, cursor} = extractCursorInfo(`
+  describe('template variables', () => {
+    describe('when cursor is on variable which was initialized implicitly', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<div *ngFor="let hero of heroes">{{her¦o}}</div>'})
           export class AppCmp {
             heroes: string[] = [];
           }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(2);
-      assertFileNames(refs, ['app.ts']);
-      assertTextSpans(refs, ['hero']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile]);
+      });
 
-      const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.ts'), cursor)!;
-      // Get the declaration by finding the reference that appears first in the template
-      originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
-      expect(originalRefs[0].isDefinition).toBe(true);
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(2);
+        assertFileNames(refs, ['app.ts']);
+        assertTextSpans(refs, ['hero']);
+
+        const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.ts'), cursor)!;
+        // Get the declaration by finding the reference that appears first in the template
+        originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
+        expect(originalRefs[0].isDefinition).toBe(true);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toBe(2);
+        assertFileNames(renameLocations, ['app.ts']);
+        assertTextSpans(renameLocations, ['hero']);
+      });
     });
 
-    it('should work for renamed variables', () => {
-      const {text, cursor} = extractCursorInfo(`
+    describe('when cursor is on renamed variable', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(`
           import {Component} from '@angular/core';
 
           @Component({template: '<div *ngFor="let hero of heroes; let iRef = index">{{iR¦ef}}</div>'})
           export class AppCmp {
             heroes: string[] = [];
           }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(2);
-      assertFileNames(refs, ['app.ts']);
-      assertTextSpans(refs, ['iRef']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile]);
+      });
 
-      const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.ts'), cursor)!;
-      // Get the declaration by finding the reference that appears first in the template
-      originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
-      expect(originalRefs[0].isDefinition).toBe(true);
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(2);
+        assertFileNames(refs, ['app.ts']);
+        assertTextSpans(refs, ['iRef']);
+
+        const originalRefs = env.ngLS.getReferencesAtPosition(_('/app.ts'), cursor)!;
+        // Get the declaration by finding the reference that appears first in the template
+        originalRefs.sort((a, b) => a.textSpan.start - b.textSpan.start);
+        expect(originalRefs[0].isDefinition).toBe(true);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toBe(2);
+        assertFileNames(renameLocations, ['app.ts']);
+        assertTextSpans(renameLocations, ['iRef']);
+      });
     });
 
-    it('should work for initializer of variable', () => {
-      const dirFile = `
+    describe('when cursor is on initializer of variable', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const dirFile = `
         import {Directive, Input} from '@angular/core';
 
         export class ExampleContext<T> {
@@ -375,7 +635,7 @@ describe('find references', () => {
             return true;
           }
         }`;
-      const fileWithCursor = `
+        const fileWithCursor = `
         import {Component, NgModule} from '@angular/core';
         import {ExampleDirective} from './example-directive';
 
@@ -386,33 +646,59 @@ describe('find references', () => {
 
         @NgModule({declarations: [AppCmp, ExampleDirective]})
         export class AppModule {}`;
-      const {text, cursor} = extractCursorInfo(fileWithCursor);
-      env = LanguageServiceTestEnvironment.setup([
-        {name: _('/app.ts'), contents: text, isRoot: true},
-        {name: _('/example-directive.ts'), contents: dirFile},
-      ]);
-      env.expectNoSourceDiagnostics();
-      env.expectNoTemplateDiagnostics(absoluteFrom('/app.ts'), 'AppCmp');
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(2);
-      assertFileNames(refs, ['app.ts', 'example-directive.ts']);
-      assertTextSpans(refs, ['identifier']);
+        const cursorInfo = extractCursorInfo(fileWithCursor);
+        cursor = cursorInfo.cursor;
+        env = LanguageServiceTestEnvironment.setup([
+          {name: _('/app.ts'), contents: cursorInfo.text, isRoot: true},
+          {name: _('/example-directive.ts'), contents: dirFile},
+        ]);
+        env.expectNoSourceDiagnostics();
+        env.expectNoTemplateDiagnostics(absoluteFrom('/app.ts'), 'AppCmp');
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(2);
+        assertFileNames(refs, ['app.ts', 'example-directive.ts']);
+        assertTextSpans(refs, ['identifier']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toBe(2);
+        assertFileNames(renameLocations, ['app.ts', 'example-directive.ts']);
+        assertTextSpans(renameLocations, ['identifier']);
+      });
     });
 
-    it('should work for prop reads of variables', () => {
-      const {text, cursor} = extractCursorInfo(`
+    describe('when cursor is on property read of variable', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(`
             import {Component} from '@angular/core';
 
             @Component({template: '<div *ngFor="let hero of heroes">{{hero.na¦me}}</div>'})
             export class AppCmp {
               heroes: Array<{name: string}> = [];
             }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(2);
-      assertFileNames(refs, ['app.ts']);
-      assertTextSpans(refs, ['name']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(2);
+        assertFileNames(refs, ['app.ts']);
+        assertTextSpans(refs, ['name']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toBe(2);
+        assertFileNames(renameLocations, ['app.ts']);
+        assertTextSpans(renameLocations, ['name']);
+      });
     });
   });
 
@@ -433,8 +719,10 @@ describe('find references', () => {
       prefixPipeFile = {name: _('/prefix-pipe.ts'), contents: prefixPipe};
     });
 
-    it('should work for pipe names', () => {
-      const appContentsWithCursor = `
+    describe('when cursor is on pipe name', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const appContentsWithCursor = `
         import {Component} from '@angular/core';
 
         @Component({template: '{{birthday | prefi¦xPipe: "MM/dd/yy"}}'})
@@ -442,17 +730,34 @@ describe('find references', () => {
           birthday = '';
         }
       `;
-      const {text, cursor} = extractCursorInfo(appContentsWithCursor);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile, prefixPipeFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(5);
-      assertFileNames(refs, ['index.d.ts', 'prefix-pipe.ts', 'app.ts']);
-      assertTextSpans(refs, ['transform', 'prefixPipe']);
+        const cursorInfo = extractCursorInfo(appContentsWithCursor);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile, prefixPipeFile]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(5);
+        assertFileNames(refs, ['index.d.ts', 'prefix-pipe.ts', 'app.ts']);
+        assertTextSpans(refs, ['transform', 'prefixPipe']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations).toBeUndefined();
+
+        // TODO(atscott): Add support for renaming the pipe 'name'
+        // expect(renameLocations.length).toBe(2);
+        // assertFileNames(renameLocations, ['prefix-pipe.ts', 'app.ts']);
+        // assertTextSpans(renameLocations, ['prefixPipe']);
+      });
     });
 
-    it('should work for pipe arguments', () => {
-      const appContentsWithCursor = `
+    describe('when cursor is on pipe argument', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const appContentsWithCursor = `
         import {Component} from '@angular/core';
 
         @Component({template: '{{birthday | prefixPipe: pr¦efix}}'})
@@ -461,13 +766,25 @@ describe('find references', () => {
           prefix = '';
         }
       `;
-      const {text, cursor} = extractCursorInfo(appContentsWithCursor);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile, prefixPipeFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toBe(2);
-      assertFileNames(refs, ['app.ts']);
-      assertTextSpans(refs, ['prefix']);
+        const cursorInfo = extractCursorInfo(appContentsWithCursor);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile, prefixPipeFile]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toBe(2);
+        assertFileNames(refs, ['app.ts']);
+        assertTextSpans(refs, ['prefix']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toBe(2);
+        assertFileNames(renameLocations, ['app.ts']);
+        assertTextSpans(renameLocations, ['prefix']);
+      });
     });
   });
 
@@ -480,69 +797,113 @@ describe('find references', () => {
           @Input() model!: string;
           @Input('alias') aliasedModel!: string;
         }`;
-    it('should work from the template', () => {
-      const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
-      const {text, cursor} = extractCursorInfo(`
+    describe('when cursor is on the input in the template', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
+        const cursorInfo = extractCursorInfo(`
         import {Component} from '@angular/core';
 
         @Component({template: '<div string-model [mod¦el]="title"></div>'})
         export class AppCmp {
           title = 'title';
         }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile, stringModelTestFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertFileNames(refs, ['string-model.ts', 'app.ts']);
-      assertTextSpans(refs, ['model']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile, stringModelTestFile]);
+      })
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertFileNames(refs, ['string-model.ts', 'app.ts']);
+        assertTextSpans(refs, ['model']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toEqual(2);
+        assertFileNames(renameLocations, ['string-model.ts', 'app.ts']);
+        assertTextSpans(renameLocations, ['model']);
+      });
     });
 
-    it('should work for text attributes', () => {
-      const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
-      const {text, cursor} = extractCursorInfo(`
+    describe('should work when cursor is on text attribute input', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
+        const cursorInfo = extractCursorInfo(`
         import {Component} from '@angular/core';
 
         @Component({template: '<div string-model mod¦el="title"></div>'})
         export class AppCmp {
           title = 'title';
         }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile, stringModelTestFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertFileNames(refs, ['string-model.ts', 'app.ts']);
-      assertTextSpans(refs, ['model']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile, stringModelTestFile]);
+      });
+
+      it('should work for text attributes', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertFileNames(refs, ['string-model.ts', 'app.ts']);
+        assertTextSpans(refs, ['model']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toEqual(2);
+        assertFileNames(renameLocations, ['string-model.ts', 'app.ts']);
+        assertTextSpans(renameLocations, ['model']);
+      });
     });
 
-    it('should work from the TS input declaration', () => {
-      const dirFileWithCursor = `
+    describe('when cursor is on the class member input', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const dirFileWithCursor = `
         import {Directive, Input} from '@angular/core';
 
         @Directive({selector: '[string-model]'})
         export class StringModel {
           @Input() mod¦el!: string;
         }`;
-      const {text, cursor} = extractCursorInfo(dirFileWithCursor);
-      const stringModelTestFile = {name: _('/string-model.ts'), contents: text};
-      const appFile = {
-        name: _('/app.ts'),
-        contents: `
+        const cursorInfo = extractCursorInfo(dirFileWithCursor);
+        cursor = cursorInfo.cursor;
+        const stringModelTestFile = {name: _('/string-model.ts'), contents: cursorInfo.text};
+        const appFile = {
+          name: _('/app.ts'),
+          contents: `
         import {Component} from '@angular/core';
 
         @Component({template: '<div string-model model="title"></div>'})
         export class AppCmp {
           title = 'title';
         }`,
-      };
-      createModuleWithDeclarations([appFile, stringModelTestFile]);
-      const refs = getReferencesAtPosition(_('/string-model.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertFileNames(refs, ['app.ts', 'string-model.ts']);
-      assertTextSpans(refs, ['model']);
+        };
+        createModuleWithDeclarations([appFile, stringModelTestFile]);
+      });
+
+      it('should work from the TS input declaration', () => {
+        const refs = getReferencesAtPosition(_('/string-model.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertFileNames(refs, ['app.ts', 'string-model.ts']);
+        assertTextSpans(refs, ['model']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/string-model.ts'), cursor)!;
+        expect(renameLocations.length).toEqual(2);
+        assertFileNames(renameLocations, ['app.ts', 'string-model.ts']);
+        assertTextSpans(renameLocations, ['model']);
+      });
     });
 
-    it('should work for inputs referenced from some other place', () => {
-      const otherDirContents = `
+    describe('when cursor is on input referenced somewhere in the class functions', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const otherDirContents = `
         import {Directive, Input} from '@angular/core';
         import {StringModel} from './string-model';
 
@@ -554,50 +915,78 @@ describe('find references', () => {
             console.log(this.stringModelRef.mod¦el);
           }
         }`;
-      const {text, cursor} = extractCursorInfo(otherDirContents);
-      const otherDirFile = {name: _('/other-dir.ts'), contents: text};
-      const stringModelTestFile = {
-        name: _('/string-model.ts'),
-        contents: `
+        const cursorInfo = extractCursorInfo(otherDirContents);
+        cursor = cursorInfo.cursor;
+        const otherDirFile = {name: _('/other-dir.ts'), contents: cursorInfo.text};
+        const stringModelTestFile = {
+          name: _('/string-model.ts'),
+          contents: `
         import {Directive, Input} from '@angular/core';
 
         @Directive({selector: '[string-model]'})
         export class StringModel {
           @Input() model!: string;
         }`,
-      };
-      const appFile = {
-        name: _('/app.ts'),
-        contents: `
+        };
+        const appFile = {
+          name: _('/app.ts'),
+          contents: `
         import {Component} from '@angular/core';
 
         @Component({template: '<div string-model other-dir model="title"></div>'})
         export class AppCmp {
           title = 'title';
         }`,
-      };
-      createModuleWithDeclarations([appFile, stringModelTestFile, otherDirFile]);
-      const refs = getReferencesAtPosition(_('/other-dir.ts'), cursor)!;
-      expect(refs.length).toEqual(3);
-      assertFileNames(refs, ['app.ts', 'string-model.ts', 'other-dir.ts']);
-      assertTextSpans(refs, ['model']);
+        };
+        createModuleWithDeclarations([appFile, stringModelTestFile, otherDirFile]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/other-dir.ts'), cursor)!;
+        expect(refs.length).toEqual(3);
+        assertFileNames(refs, ['app.ts', 'string-model.ts', 'other-dir.ts']);
+        assertTextSpans(refs, ['model']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/other-dir.ts'), cursor)!;
+        expect(renameLocations.length).toEqual(3);
+        assertFileNames(renameLocations, ['app.ts', 'string-model.ts', 'other-dir.ts']);
+        assertTextSpans(renameLocations, ['model']);
+      });
     });
 
-    it('should work with aliases', () => {
-      const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
-      const {text, cursor} = extractCursorInfo(`
+    describe('when cursor is on an aliased input', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const stringModelTestFile = {name: _('/string-model.ts'), contents: dirFileContents};
+        const cursorInfo = extractCursorInfo(`
         import {Component} from '@angular/core';
 
         @Component({template: '<div string-model [al¦ias]="title"></div>'})
         export class AppCmp {
           title = 'title';
         }`);
-      const appFile = {name: _('/app.ts'), contents: text};
-      createModuleWithDeclarations([appFile, stringModelTestFile]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertFileNames(refs, ['string-model.ts', 'app.ts']);
-      assertTextSpans(refs, ['aliasedModel', 'alias']);
+        cursor = cursorInfo.cursor;
+        const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+        createModuleWithDeclarations([appFile, stringModelTestFile]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertFileNames(refs, ['string-model.ts', 'app.ts']);
+        assertTextSpans(refs, ['aliasedModel', 'alias']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): add support for renaming alias outputs
+        // expect(renameLocations.length).toEqual(2);
+        // assertFileNames(renameLocations, ['string-model.ts', 'app.ts']);
+        // assertTextSpans(renameLocations, ['alias']);
+      });
     });
   });
 
@@ -625,39 +1014,70 @@ describe('find references', () => {
         export class AppModule {}`;
     }
 
-    it('should work', () => {
-      const {text, cursor} = extractCursorInfo(
-          generateAppFile(`<div string-model (mod¦elChange)="setTitle($event)"></div>`));
-      env = LanguageServiceTestEnvironment.setup([
-        {name: _('/app.ts'), contents: text, isRoot: true},
-        {name: _('/string-model.ts'), contents: dirFile},
-      ]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertTextSpans(refs, ['modelChange']);
+    describe('when cursor is on output key in template', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(
+            generateAppFile(`<div string-model (mod¦elChange)="setTitle($event)"></div>`));
+        cursor = cursorInfo.cursor;
+        env = LanguageServiceTestEnvironment.setup([
+          {name: _('/app.ts'), contents: cursorInfo.text, isRoot: true},
+          {name: _('/string-model.ts'), contents: dirFile},
+        ]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertTextSpans(refs, ['modelChange']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations.length).toEqual(2);
+        assertTextSpans(renameLocations, ['modelChange']);
+      });
     });
 
-    it('should work with aliases', () => {
-      const {text, cursor} = extractCursorInfo(
-          generateAppFile(`<div string-model (a¦lias)="setTitle($event)"></div>`));
-      env = LanguageServiceTestEnvironment.setup([
-        {name: _('/app.ts'), contents: text, isRoot: true},
-        {name: _('/string-model.ts'), contents: dirFile},
-      ]);
-      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
-      expect(refs.length).toEqual(2);
-      assertTextSpans(refs, ['aliasedModelChange', 'alias']);
+    describe('when cursor is on alias output key', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(
+            generateAppFile(`<div string-model (a¦lias)="setTitle($event)"></div>`));
+        cursor = cursorInfo.cursor;
+        env = LanguageServiceTestEnvironment.setup([
+          {name: _('/app.ts'), contents: cursorInfo.text, isRoot: true},
+          {name: _('/string-model.ts'), contents: dirFile},
+        ]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+        expect(refs.length).toEqual(2);
+        assertTextSpans(refs, ['aliasedModelChange', 'alias']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): add support for renaming alias outputs
+        // expect(renameLocations.length).toEqual(2);
+        // assertTextSpans(renameLocations, ['alias']);
+      });
     });
   });
 
   describe('directives', () => {
-    it('works for directive classes', () => {
-      const {text, cursor} = extractCursorInfo(`
+    describe('when cursor is on the directive class', () => {
+      let cursor: number;
+      beforeEach(() => {
+        const cursorInfo = extractCursorInfo(`
       import {Directive} from '@angular/core';
 
       @Directive({selector: '[dir]'})
       export class Di¦r {}`);
-      const appFile = `
+        cursor = cursorInfo.cursor;
+        const appFile = `
         import {Component, NgModule} from '@angular/core';
         import {Dir} from './dir';
 
@@ -668,40 +1088,42 @@ describe('find references', () => {
         @NgModule({declarations: [AppCmp, Dir]})
         export class AppModule {}
       `;
-      env = LanguageServiceTestEnvironment.setup([
-        {name: _('/app.ts'), contents: appFile, isRoot: true},
-        {name: _('/dir.ts'), contents: text},
-      ]);
-      const refs = getReferencesAtPosition(_('/dir.ts'), cursor)!;
-      // 4 references are:  class declaration, template usage, app import and use in declarations
-      // list.
-      expect(refs.length).toBe(4);
-      assertTextSpans(refs, ['<div dir>', 'Dir']);
-      assertFileNames(refs, ['app.ts', 'dir.ts']);
+        env = LanguageServiceTestEnvironment.setup([
+          {name: _('/app.ts'), contents: appFile, isRoot: true},
+          {name: _('/dir.ts'), contents: cursorInfo.text},
+        ]);
+      });
+
+      it('should find references', () => {
+        const refs = getReferencesAtPosition(_('/dir.ts'), cursor)!;
+        // 4 references are:  class declaration, template usage, app import and use in declarations
+        // list.
+        expect(refs.length).toBe(4);
+        assertTextSpans(refs, ['<div dir>', 'Dir']);
+        assertFileNames(refs, ['app.ts', 'dir.ts']);
+      });
+
+      it('should find rename locations', () => {
+        const renameLocations = getRenameLocationsAtPosition(_('/dir.ts'), cursor)!;
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): We should handle this case, but exclude the template results
+        // expect(renameLocations.length).toBe(3);
+        // assertTextSpans(renameLocations, ['Dir']);
+        // assertFileNames(renameLocations, ['app.ts', 'dir.ts']);
+      });
     });
   });
 
   function getReferencesAtPosition(fileName: string, position: number) {
     env.expectNoSourceDiagnostics();
     const result = env.ngLS.getReferencesAtPosition(fileName, position);
-    return result?.map(humanizeReferenceEntry);
+    return result?.map((item) => humanizeDocumentSpanLike(item, env));
   }
 
-  function humanizeReferenceEntry(entry: ts.ReferenceEntry): Stringy<ts.DocumentSpan>&
-      Pick<ts.ReferenceEntry, 'isWriteAccess'|'isDefinition'|'isInString'> {
-    const fileContents = env.host.readFile(entry.fileName);
-    if (!fileContents) {
-      throw new Error('Could not read file ${entry.fileName}');
-    }
-    return {
-      ...entry,
-      textSpan: getText(fileContents, entry.textSpan),
-      contextSpan: entry.contextSpan ? getText(fileContents, entry.contextSpan) : undefined,
-      originalTextSpan: entry.originalTextSpan ? getText(fileContents, entry.originalTextSpan) :
-                                                 undefined,
-      originalContextSpan:
-          entry.originalContextSpan ? getText(fileContents, entry.originalContextSpan) : undefined,
-    };
+  function getRenameLocationsAtPosition(fileName: string, position: number) {
+    env.expectNoSourceDiagnostics();
+    const result = env.ngLS.findRenameLocations(fileName, position);
+    return result?.map((item) => humanizeDocumentSpanLike(item, env));
   }
 
   function getFirstClassDeclaration(declaration: string) {
@@ -752,7 +1174,3 @@ function assertTextSpans(refs: Array<{textSpan: string}>, expectedTextSpans: str
 function last<T>(array: T[]): T {
   return array[array.length - 1];
 }
-
-type Stringy<T> = {
-  [P in keyof T]: string;
-};

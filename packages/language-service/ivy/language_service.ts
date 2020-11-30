@@ -10,7 +10,7 @@ import {CompilerOptions, ConfigurationHost, readConfiguration} from '@angular/co
 import {absoluteFrom, absoluteFromSourceFile, AbsoluteFsPath} from '@angular/compiler-cli/src/ngtsc/file_system';
 import {TypeCheckShimGenerator} from '@angular/compiler-cli/src/ngtsc/typecheck';
 import {OptimizeFor, TypeCheckingProgramStrategy} from '@angular/compiler-cli/src/ngtsc/typecheck/api';
-import {ReferenceBuilder} from '@angular/language-service/ivy/references';
+import {ReferencesAndRenameBuilder} from '@angular/language-service/ivy/references';
 import * as ts from 'typescript/lib/tsserverlibrary';
 
 import {LanguageServiceAdapter, LSParseConfigHost} from './adapters';
@@ -99,12 +99,46 @@ export class LanguageService {
 
   getReferencesAtPosition(fileName: string, position: number): ts.ReferenceEntry[]|undefined {
     const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
-    const results =
-        new ReferenceBuilder(this.strategy, this.tsLS, compiler).get(fileName, position);
-    const results = new ReferenceBuilder(this.strategy, this.tsLS, compiler)
-                        .get(absoluteFrom(fileName), position);
+    const results = new ReferencesAndRenameBuilder(this.strategy, this.tsLS, compiler)
+                        .getReferencesAtPosition(fileName, position);
     this.compilerFactory.registerLastKnownProgram();
     return results;
+  }
+
+  findRenameLocations(fileName: string, position: number): readonly ts.RenameLocation[]|undefined {
+    const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
+    const results = new ReferencesAndRenameBuilder(this.strategy, this.tsLS, compiler)
+                        .findRenameLocations(absoluteFrom(fileName), position);
+    this.compilerFactory.registerLastKnownProgram();
+    return results;
+  }
+
+  getRenameInfo(fileName: string, position: number): ts.RenameInfo {
+    const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
+    const renameLocations = new ReferencesAndRenameBuilder(this.strategy, this.tsLS, compiler)
+                                .findRenameLocations(absoluteFrom(fileName), position);
+    if (renameLocations === undefined || renameLocations.length === 0) {
+      return {canRename: false, localizedErrorMessage: ''};
+    }
+    const quickInfo = this.getQuickInfoAtPosition(fileName, position);
+    const originRenameLocation = renameLocations.find(
+        l => l.textSpan.start <= position && position <= l.textSpan.start + l.textSpan.length);
+    if (quickInfo === undefined || originRenameLocation === undefined) {
+      return {canRename: false, localizedErrorMessage: ''};
+    }
+
+    const originFileContents =
+        this.parseConfigHost.readFile(absoluteFrom(originRenameLocation.fileName));
+    const displayName = originFileContents.substr(
+        originRenameLocation.textSpan.start, originRenameLocation.textSpan.length);
+    return {
+      canRename: true,
+      displayName,
+      fullDisplayName: displayName,
+      kind: quickInfo.kind,
+      kindModifiers: quickInfo.kindModifiers,
+      triggerSpan: originRenameLocation.textSpan,
+    };
   }
 
   private watchConfigFile(project: ts.server.Project) {
