@@ -30,7 +30,7 @@ ts_library(
         "definitions_spec.ts",
         "diagnostics_spec.ts",
         "hover_spec.ts",
-        "references_spec.ts",
+        "references_rename_spec.ts",
     ],
     data = [":project"],
     deps = [

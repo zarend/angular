@@ -105,6 +105,14 @@ export class LanguageService {
     return results;
   }
 
+  findRenameLocations(fileName: string, position: number): readonly ts.RenameLocation[]|undefined {
+    const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
+    const results = new ReferenceBuilder(this.strategy, this.tsLS, compiler)
+                        .findRenameLocations(absoluteFrom(fileName), position);
+    this.compilerFactory.registerLastKnownProgram();
+    return results;
+  }
+
   private watchConfigFile(project: ts.server.Project) {
     // TODO: Check the case when the project is disposed. An InferredProject
     // could be disposed when a tsconfig.json is added to the workspace,
