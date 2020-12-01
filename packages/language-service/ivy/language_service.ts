@@ -113,6 +113,34 @@ export class LanguageService {
     return results;
   }
 
+  getRenameInfo(fileName: string, position: number): ts.RenameInfo {
+    const compiler = this.compilerFactory.getOrCreateWithChangedFile(fileName);
+    const renameLocations = new ReferencesAndRenameBuilder(this.strategy, this.tsLS, compiler)
+                                .findRenameLocations(absoluteFrom(fileName), position);
+    if (renameLocations === undefined || renameLocations.length === 0) {
+      return {canRename: false, localizedErrorMessage: ''};
+    }
+    const quickInfo = this.getQuickInfoAtPosition(fileName, position);
+    const originRenameLocation = renameLocations.find(
+        l => l.textSpan.start <= position && position <= l.textSpan.start + l.textSpan.length);
+    if (quickInfo === undefined || originRenameLocation === undefined) {
+      return {canRename: false, localizedErrorMessage: ''};
+    }
+
+    const originFileContents =
+        this.parseConfigHost.readFile(absoluteFrom(originRenameLocation.fileName));
+    const displayName = originFileContents.substr(
+        originRenameLocation.textSpan.start, originRenameLocation.textSpan.length);
+    return {
+      canRename: true,
+      displayName,
+      fullDisplayName: displayName,
+      kind: quickInfo.kind,
+      kindModifiers: quickInfo.kindModifiers,
+      triggerSpan: originRenameLocation.textSpan,
+    };
+  }
+
   private watchConfigFile(project: ts.server.Project) {
     // TODO: Check the case when the project is disposed. An InferredProject
     // could be disposed when a tsconfig.json is added to the workspace,
