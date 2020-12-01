@@ -14,7 +14,7 @@ export function getText(contents: string, textSpan: ts.TextSpan) {
   return contents.substr(textSpan.start, textSpan.length);
 }
 export function humanizeDocumentSpanLike<T extends ts.DocumentSpan>(
-    item: T, env: LanguageServiceTestEnvironment) {
+    item: T, env: LanguageServiceTestEnvironment): T&Stringy<ts.DocumentSpan> {
   const fileContents = env.host.readFile(item.fileName);
   if (!fileContents) {
     throw new Error('Could not read file ${entry.fileName}');
@@ -29,3 +29,7 @@ export function humanizeDocumentSpanLike<T extends ts.DocumentSpan>(
         item.originalContextSpan ? getText(fileContents, item.originalContextSpan) : undefined,
   };
 }
+
+type Stringy<T> = {
+  [P in keyof T]: string;
+};

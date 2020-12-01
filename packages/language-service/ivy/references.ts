@@ -14,7 +14,7 @@ import * as ts from 'typescript';
 import {getTargetAtPosition} from './template_target';
 import {getTemplateInfoAtPosition, isWithin, TemplateInfo, toTextSpan} from './utils';
 
-export class ReferenceBuilder {
+export class ReferencesAndRenameBuilder {
   private readonly ttc = this.compiler.getTemplateTypeChecker();
 
   constructor(
@@ -39,7 +39,8 @@ export class ReferenceBuilder {
 
   findRenameLocationsAtTypesriptPosition(filePath: AbsoluteFsPath, position: number):
       readonly ts.RenameLocation[]|undefined {
-    const refs = this.tsLS.findRenameLocations(filePath, position, false, false);
+    const refs = this.tsLS.findRenameLocations(
+        filePath, position, /*findInStrings*/ false, /*findInComments*/ false);
     if (refs === undefined) {
       return undefined;
     }
@@ -60,7 +61,8 @@ export class ReferenceBuilder {
     return entries;
   }
 
-  get(filePath: string, position: number): ts.ReferenceEntry[]|undefined {
+  getReferencesAtPosition(filePath: string, position: number):
+      ts.ReferenceEntry[]|undefined {
     this.ttc.generateAllTypeCheckBlocks();
     const templateInfo = getTemplateInfoAtPosition(filePath, position, this.compiler);
     if (templateInfo === undefined) {
