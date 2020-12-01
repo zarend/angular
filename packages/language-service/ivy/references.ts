@@ -5,7 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {AST, PropertyRead, TmplAstNode, TmplAstVariable} from '@angular/compiler';
+import {AST, TmplAstNode, TmplAstVariable} from '@angular/compiler';
 import {NgCompiler} from '@angular/compiler-cli/src/ngtsc/core';
 import {absoluteFrom, absoluteFromSourceFile, AbsoluteFsPath} from '@angular/compiler-cli/src/ngtsc/file_system';
 import {ShimLocation, SymbolKind, TemplateTypeChecker, TypeCheckingProgramStrategy} from '@angular/compiler-cli/src/ngtsc/typecheck/api';
@@ -14,7 +14,7 @@ import * as ts from 'typescript';
 import {getTargetAtPosition} from './template_target';
 import {getTemplateInfoAtPosition, isWithin, TemplateInfo, toTextSpan} from './utils';
 
-export class ReferenceBuilder {
+export class ReferencesAndRenameBuilder {
   private readonly ttc = this.compiler.getTemplateTypeChecker();
 
   constructor(
@@ -39,7 +39,8 @@ export class ReferenceBuilder {
 
   findRenameLocationsAtTypesriptPosition(filePath: AbsoluteFsPath, position: number):
       readonly ts.RenameLocation[]|undefined {
-    const refs = this.tsLS.findRenameLocations(filePath, position, false, false);
+    const refs = this.tsLS.findRenameLocations(
+        filePath, position, /*findInStrings*/ false, /*findInComments*/ false);
     if (refs === undefined) {
       return undefined;
     }
@@ -60,7 +61,8 @@ export class ReferenceBuilder {
     return entries;
   }
 
-  get(filePath: AbsoluteFsPath, position: number): ts.ReferenceEntry[]|undefined {
+  getReferencesAtPosition(filePath: AbsoluteFsPath, position: number):
+      ts.ReferenceEntry[]|undefined {
     this.ttc.generateAllTypeCheckBlocks();
     const templateInfo = getTemplateInfoAtPosition(filePath, position, this.compiler);
     if (templateInfo === undefined) {
