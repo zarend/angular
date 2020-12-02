@@ -5,14 +5,32 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {AST, TmplAstNode, TmplAstVariable} from '@angular/compiler';
+import {AST, BindingPipe, LiteralPrimitive, MethodCall, PropertyRead, PropertyWrite, SafeMethodCall, SafePropertyRead, TmplAstBoundAttribute, TmplAstBoundEvent, TmplAstNode, TmplAstReference, TmplAstTextAttribute, TmplAstVariable} from '@angular/compiler';
 import {NgCompiler} from '@angular/compiler-cli/src/ngtsc/core';
 import {absoluteFrom, absoluteFromSourceFile, AbsoluteFsPath} from '@angular/compiler-cli/src/ngtsc/file_system';
 import {ShimLocation, SymbolKind, TemplateTypeChecker, TypeCheckingProgramStrategy} from '@angular/compiler-cli/src/ngtsc/typecheck/api';
 import * as ts from 'typescript';
 
 import {getTargetAtPosition} from './template_target';
-import {getTemplateInfoAtPosition, isWithin, TemplateInfo, toTextSpan} from './utils';
+import {getTemplateInfoAtPosition, isTemplateNode, isWithin, TemplateInfo, toTextSpan} from './utils';
+
+enum RequestKind {
+  Template,
+  TypeScript,
+}
+
+interface TemplateRequest {
+  kind: RequestKind.Template;
+  requestNode: TmplAstNode|AST;
+  position: number;
+}
+
+interface TypeScriptRequest {
+  kind: RequestKind.TypeScript;
+  requestNode: ts.Node;
+}
+
+type RequestOrigin = TemplateRequest|TypeScriptRequest;
 
 export class ReferencesAndRenameBuilder {
   private readonly ttc = this.compiler.getTemplateTypeChecker();
@@ -26,7 +44,12 @@ export class ReferencesAndRenameBuilder {
     this.ttc.generateAllTypeCheckBlocks();
     const templateInfo = getTemplateInfoAtPosition(filePath, position, this.compiler);
     if (templateInfo === undefined) {
-      return this.findRenameLocationsAtTypesriptPosition(filePath, position);
+      const requestNode = this.getTsNodeAtPosition(filePath, position);
+      if (requestNode === null) {
+        return undefined;
+      }
+      return this.findRenameLocationsAtTypesriptPosition(
+          filePath, position, {kind: RequestKind.TypeScript, requestNode});
     }
 
     const targetDetails = this.getTargetDetailsAtTemplatePosition(templateInfo, position);
@@ -34,11 +57,33 @@ export class ReferencesAndRenameBuilder {
       return undefined;
     }
     return this.findRenameLocationsAtTypesriptPosition(
-        targetDetails.shimPath, targetDetails.positionInShimFile);
+        targetDetails.shimPath, targetDetails.positionInShimFile,
+        {kind: RequestKind.Template, requestNode: targetDetails.templateTarget, position});
   }
 
-  findRenameLocationsAtTypesriptPosition(filePath: AbsoluteFsPath, position: number):
-      readonly ts.RenameLocation[]|undefined {
+  private getTsNodeAtPosition(filePath: string, position: number): ts.Node|null {
+    const sf = this.strategy.getProgram().getSourceFile(filePath);
+    if (!sf) {
+      return null;
+    }
+    return getTokenAtPosition(sf, position);
+  }
+
+  findRenameLocationsAtTypesriptPosition(
+      filePath: AbsoluteFsPath, position: number,
+      requestOrigin: RequestOrigin): readonly ts.RenameLocation[]|undefined {
+    let originalNodeText: string;
+    if (requestOrigin.kind === RequestKind.TypeScript) {
+      originalNodeText = requestOrigin.requestNode.getText();
+    } else {
+      const templateNodeText =
+          getTemplateNodeRenameTextAtPosition(requestOrigin.requestNode, requestOrigin.position);
+      if (templateNodeText === null) {
+        return undefined;
+      }
+      originalNodeText = templateNodeText;
+    }
+
     const refs = this.tsLS.findRenameLocations(
         filePath, position, /*findInStrings*/ false, /*findInComments*/ false);
     if (refs === undefined) {
@@ -50,11 +95,19 @@ export class ReferencesAndRenameBuilder {
       // TODO(atscott): Determine if a file is a shim file in a more robust way and make the API
       // available in an appropriate location.
       if (ref.fileName.endsWith('ngtypecheck.ts')) {
-        const entry = convertToTemplateDocumentSpan(ref, this.ttc);
-        if (entry !== null) {
-          entries.push(entry);
+        const entry = convertToTemplateDocumentSpan(ref, this.ttc, originalNodeText);
+        // There is no template node whose text matches the original rename request. Bail on
+        // renaming completely rather than providing incomplete results.
+        if (entry === null) {
+          return undefined;
         }
+        entries.push(entry);
       } else {
+        // Ensure we only allow renaming a TS result with matching text
+        const refNode = this.getTsNodeAtPosition(ref.fileName, ref.textSpan.start);
+        if (refNode === null || refNode.getText() !== originalNodeText) {
+          return undefined;
+        }
         entries.push(ref);
       }
     }
@@ -164,8 +217,46 @@ export class ReferencesAndRenameBuilder {
   }
 }
 
+function getTemplateNodeRenameTextAtPosition(node: TmplAstNode|AST, position: number): string|null {
+  if (isTemplateNode(node)) {
+    if (node instanceof TmplAstBoundAttribute || node instanceof TmplAstTextAttribute ||
+        node instanceof TmplAstBoundEvent) {
+      return node.name;
+    } else if (node instanceof TmplAstVariable || node instanceof TmplAstReference) {
+      if (isWithin(position, node.keySpan)) {
+        return node.keySpan.toString();
+      } else if (node.valueSpan && isWithin(position, node.valueSpan)) {
+        return node.valueSpan.toString();
+      }
+    }
+
+    return null;
+  } else {
+    if (node instanceof BindingPipe) {
+      // TODO(atscott): Add support for renaming pipes
+      return null;
+    }
+    if (node instanceof PropertyRead || node instanceof MethodCall ||
+        node instanceof PropertyWrite || node instanceof SafePropertyRead ||
+        node instanceof SafeMethodCall) {
+      return node.name;
+    } else if (node instanceof LiteralPrimitive) {
+      return node.value;
+    }
+
+    return null;
+  }
+}
+
+
+export function getTokenAtPosition(sf: ts.SourceFile, pos: number): ts.Node {
+  // getTokenAtPosition is part of TypeScript's private API.
+  return (ts as any).getTokenAtPosition(sf, pos);
+}
+
 function convertToTemplateDocumentSpan<T extends ts.DocumentSpan>(
-    shimDocumentSpan: T, templateTypeChecker: TemplateTypeChecker): T|null {
+    shimDocumentSpan: T, templateTypeChecker: TemplateTypeChecker, requiredNodeText?: string): T|
+    null {
   const mapping = templateTypeChecker.getTemplateMappingAtShimLocation({
     shimPath: absoluteFrom(shimDocumentSpan.fileName),
     positionInShimFile: shimDocumentSpan.textSpan.start,
@@ -184,6 +275,10 @@ function convertToTemplateDocumentSpan<T extends ts.DocumentSpan>(
     // This includes indirect mappings, which are difficult to map directly to the code location.
     // Diagnostics similarly return a synthetic template string for this case rather than a real
     // location.
+    return null;
+  }
+
+  if (requiredNodeText !== undefined && span.toString() !== requiredNodeText) {
     return null;
   }
 
