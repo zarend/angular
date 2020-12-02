@@ -61,6 +61,16 @@ export function create(info: ts.server.PluginCreateInfo): ts.LanguageService {
     return ngLS.getReferencesAtPosition(fileName, position);
   }
 
+  function findRenameLocations(
+      fileName: string, position: number, findInStrings: boolean, findInComments: boolean,
+      providePrefixAndSuffixTextForRename?: boolean): readonly ts.RenameLocation[]|undefined {
+    return ngLS.findRenameLocations(fileName, position);
+  }
+
+  function getRenameInfo(fileName: string, position: number): ts.RenameInfo {
+    return ngLS.getRenameInfo(fileName, position);
+  }
+
   return {
     ...tsLS,
     getSemanticDiagnostics,
@@ -68,5 +78,7 @@ export function create(info: ts.server.PluginCreateInfo): ts.LanguageService {
     getQuickInfoAtPosition,
     getDefinitionAndBoundSpan,
     getReferencesAtPosition,
+    getRenameInfo,
+    findRenameLocations,
   };
 }
