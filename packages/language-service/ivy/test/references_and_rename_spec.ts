@@ -261,16 +261,15 @@ describe('find references and rename locations', () => {
 
     it('gets rename locations in component class', () => {
       const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
-      // 3 references: the type definition, the value assignment, and the read in the template
-      expect(renameLocations.length).toBe(3);
+      expect(renameLocations).toBeUndefined();
 
-      assertFileNames(renameLocations, ['app.ts']);
-      // TODO(atscott): investigate if we can make the template keyed read be just the 'name' part.
-      // The TypeScript implementation specifically adjusts the span to accommodate string literals:
-      // https://sourcegraph.com/github.com/microsoft/TypeScript@d5779c75d3dd19565b60b9e2960b8aac36d4d635/-/blob/src/services/findAllReferences.ts#L508-512
-      // One possible solution would be to extend `FullTemplateMapping` to include the matched TCB
-      // node and then do the same thing that TS does: if the node is a string, adjust the span.
-      assertTextSpans(renameLocations, ['name', '"name"']);
+      // TODO(atscott): We should handle this case. The fix requires us to fix the result span as
+      // described above.
+      // 3 references: the type definition, the value assignment, and the read in the template
+      // expect(renameLocations.length).toBe(3);
+      //
+      // assertFileNames(renameLocations, ['app.ts']);
+      // assertTextSpans(renameLocations, ['name']);
     });
   })
 
@@ -716,9 +715,12 @@ describe('find references and rename locations', () => {
 
       it('should find rename locations', () => {
         const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
-        expect(renameLocations.length).toBe(5);
-        assertFileNames(renameLocations, ['index.d.ts', 'prefix-pipe.ts', 'app.ts']);
-        assertTextSpans(renameLocations, ['transform', 'prefixPipe']);
+        expect(renameLocations).toBeUndefined();
+
+        // TODO(atscott): Add support for renaming the pipe 'name'
+        // expect(renameLocations.length).toBe(2);
+        // assertFileNames(renameLocations, ['prefix-pipe.ts', 'app.ts']);
+        // assertTextSpans(renameLocations, ['prefixPipe']);
       });
     });
 
@@ -949,9 +951,11 @@ describe('find references and rename locations', () => {
 
       it('should find rename locations', () => {
         const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
-        expect(renameLocations.length).toEqual(2);
-        assertFileNames(renameLocations, ['string-model.ts', 'app.ts']);
-        assertTextSpans(renameLocations, ['aliasedModel', 'alias']);
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): add support for renaming alias outputs
+        // expect(renameLocations.length).toEqual(2);
+        // assertFileNames(renameLocations, ['string-model.ts', 'app.ts']);
+        // assertTextSpans(renameLocations, ['alias']);
       });
     });
   });
@@ -1025,8 +1029,10 @@ describe('find references and rename locations', () => {
 
       it('should find rename locations', () => {
         const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
-        expect(renameLocations.length).toEqual(2);
-        assertTextSpans(renameLocations, ['aliasedModelChange', 'alias']);
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): add support for renaming alias outputs
+        // expect(renameLocations.length).toEqual(2);
+        // assertTextSpans(renameLocations, ['alias']);
       });
     });
   });
@@ -1069,9 +1075,11 @@ describe('find references and rename locations', () => {
 
       it('should find rename locations', () => {
         const renameLocations = getRenameLocationsAtPosition(_('/dir.ts'), cursor)!;
-        expect(renameLocations.length).toBe(4);
-        assertTextSpans(renameLocations, ['<div dir>', 'Dir']);
-        assertFileNames(renameLocations, ['app.ts', 'dir.ts']);
+        expect(renameLocations).toBeUndefined();
+        // TODO(atscott): We should handle this case, but exclude the template results
+        // expect(renameLocations.length).toBe(3);
+        // assertTextSpans(renameLocations, ['Dir']);
+        // assertFileNames(renameLocations, ['app.ts', 'dir.ts']);
       });
     });
   });
