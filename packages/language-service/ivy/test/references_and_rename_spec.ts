@@ -389,6 +389,36 @@ describe('find references and rename locations', () => {
     })
   })
 
+  describe('when cursor is on class member that is referenced in inline template', () => {
+    let cursor: number;
+
+    beforeEach(() => {
+      const cursorInfo = extractCursorInfo(`
+          import {Component} from '@angular/core';
+          @Component({template: '{{myProp}}'})
+          export class AppCmp {
+            myP¦rop!: string;
+          }`);
+      cursor = cursorInfo.cursor;
+      const appFile = {name: _('/app.ts'), contents: cursorInfo.text};
+      createModuleWithDeclarations([appFile]);
+    })
+
+    it('gets component member references from TS file and inline template', () => {
+      const refs = getReferencesAtPosition(_('/app.ts'), cursor)!;
+      expect(refs.length).toBe(2);
+      assertFileNames(refs, ['app.ts']);
+      assertTextSpans(refs, ['myProp']);
+    });
+
+    it('gets rename locations from TS file and inline template', () => {
+      const renameLocations = getRenameLocationsAtPosition(_('/app.ts'), cursor)!;
+      expect(renameLocations.length).toBe(2);
+      assertFileNames(renameLocations, ['app.ts']);
+      assertTextSpans(renameLocations, ['myProp']);
+    });
+  })
+
   describe('template references', () => {
     describe('directives', () => {
       let appFile: TestFile;
