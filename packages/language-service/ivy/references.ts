@@ -56,12 +56,12 @@ export class ReferenceBuilder {
         // Dom bindings aren't currently type-checked (see `checkTypeOfDomBindings`) so they don't
         // have a shim location. This means we can't match dom bindings to their lib.dom reference,
         // but we can still see if they match to a directive.
-        if (!(positionDetails.node instanceof TmplAstTextAttribute) &&
-            !(positionDetails.node instanceof TmplAstBoundAttribute)) {
+        if (!(positionDetails.nodeInContext.node instanceof TmplAstTextAttribute) &&
+            !(positionDetails.nodeInContext.node instanceof TmplAstBoundAttribute)) {
           return undefined;
         }
         const directives = getDirectiveMatchesForAttribute(
-            positionDetails.node.name, symbol.host.templateNode, symbol.host.directives);
+            positionDetails.nodeInContext.node.name, symbol.host.templateNode, symbol.host.directives);
         return this.getReferencesForDirectives(directives);
       }
       case SymbolKind.Reference: {
