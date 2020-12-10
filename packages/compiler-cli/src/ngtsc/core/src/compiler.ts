@@ -111,7 +111,7 @@ export class NgCompiler {
       oldProgram: ts.Program|null = null,
       private perfRecorder: PerfRecorder = NOOP_PERF_RECORDER,
   ) {
-    this.options.compileNonExportedClasses = false; // don't compile spec files
+    this.options.compileNonExportedClasses = false;  // don't compile spec files
     this.constructionDiagnostics.push(...this.adapter.constructionDiagnostics);
     const incompatibleTypeCheckOptionsDiagnostic = verifyCompatibleTypeCheckOptions(this.options);
     if (incompatibleTypeCheckOptionsDiagnostic !== null) {
