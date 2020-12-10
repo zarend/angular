@@ -61,7 +61,8 @@ export class ReferenceBuilder {
           return undefined;
         }
         const directives = getDirectiveMatchesForAttribute(
-            positionDetails.nodeInContext.node.name, symbol.host.templateNode, symbol.host.directives);
+            positionDetails.nodeInContext.node.name, symbol.host.templateNode,
+            symbol.host.directives);
         return this.getReferencesForDirectives(directives);
       }
       case SymbolKind.Reference: {
