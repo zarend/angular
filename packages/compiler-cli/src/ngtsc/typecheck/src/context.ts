@@ -221,35 +221,48 @@ export class TypeCheckContextImpl implements TypeCheckContext {
 
     // Accumulate a list of any directives which could not have type constructors generated due to
     // unsupported inlining operations.
-    let missingInlines: ClassDeclaration[] = [];
+    const missingInlines: ClassDeclaration[] = [];
 
     const boundTarget = binder.bind({template});
 
-    // Get all of the directives used in the template and record type constructors for all of them.
+    // Get all of the directives used in the template and record inline type constructors when
+    // required.
     for (const dir of boundTarget.getUsedDirectives()) {
       const dirRef = dir.ref as Reference<ClassDeclaration<ts.ClassDeclaration>>;
       const dirNode = dirRef.node;
 
-      if (dir.isGeneric && requiresInlineTypeCtor(dirNode, this.reflector)) {
-        if (this.inlining === InliningMode.Error) {
-          missingInlines.push(dirNode);
-          continue;
-        }
-        // Add a type constructor operation for the directive.
-        this.addInlineTypeCtor(fileData, dirNode.getSourceFile(), dirRef, {
-          fnName: 'ngTypeCtor',
-          // The constructor should have a body if the directive comes from a .ts file, but not if
-          // it comes from a .d.ts file. .d.ts declarations don't have bodies.
-          body: !dirNode.getSourceFile().isDeclarationFile,
-          fields: {
-            inputs: dir.inputs.classPropertyNames,
-            outputs: dir.outputs.classPropertyNames,
-            // TODO(alxhub): support queries
-            queries: dir.queries,
-          },
-          coercedInputFields: dir.coercedInputFields,
-        });
+      if (!dir.isGeneric || !requiresInlineTypeCtor(dirNode, this.reflector)) {
+        // inlining not required
+        continue;
       }
+
+      if (this.inlining === InliningMode.Error && this.config.useInlineTypeConstructors === false) {
+        // Instead of inlining, we fall back to using `any` type for generic parameters. Since we
+        // can declare this directive, we do not produce an error for it.
+        continue;
+      }
+
+      if (this.inlining === InliningMode.Error && this.config.useInlineTypeConstructors === true) {
+        // Inlining is not allowed, and we cannot avoid inlining, so we record an error for this
+        // directive since there is no way to declare it.
+        missingInlines.push(dirNode);
+        continue;
+      }
+
+      // Add an inline type constructor operation for the directive.
+      this.addInlineTypeCtor(fileData, dirNode.getSourceFile(), dirRef, {
+        fnName: 'ngTypeCtor',
+        // The constructor should have a body if the directive comes from a .ts file, but not if
+        // it comes from a .d.ts file. .d.ts declarations don't have bodies.
+        body: !dirNode.getSourceFile().isDeclarationFile,
+        fields: {
+          inputs: dir.inputs.classPropertyNames,
+          outputs: dir.outputs.classPropertyNames,
+          // TODO(alxhub): support queries
+          queries: dir.queries,
+        },
+        coercedInputFields: dir.coercedInputFields,
+      });
     }
 
     shimData.templates.set(templateId, {

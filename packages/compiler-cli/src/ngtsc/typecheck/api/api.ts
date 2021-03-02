@@ -260,6 +260,17 @@ export interface TypeCheckingConfig {
    * literals are cast to `any` when declared.
    */
   strictLiteralTypes: boolean;
+
+  /**
+   * Determines if inline type contructors are available.
+   *
+   * If true, uses inline type constuctors when required. The environment must support inling if
+   * set to true.
+   *
+   * If false, never use inline type constructors. If a type constructor would normally require
+   * inlining, use `any` type instead to avoid inlining.
+   */
+  useInlineTypeConstructors: boolean;
 }
 
 
